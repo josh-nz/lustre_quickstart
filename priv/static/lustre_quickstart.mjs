@@ -1317,6 +1317,28 @@ function do_map(loop$list, loop$fun, loop$acc) {
 function map2(list, fun) {
   return do_map(list, fun, toList([]));
 }
+function do_index_map(loop$list, loop$fun, loop$index, loop$acc) {
+  while (true) {
+    let list = loop$list;
+    let fun = loop$fun;
+    let index3 = loop$index;
+    let acc = loop$acc;
+    if (list.hasLength(0)) {
+      return reverse(acc);
+    } else {
+      let x = list.head;
+      let xs = list.tail;
+      let acc$1 = prepend(fun(x, index3), acc);
+      loop$list = xs;
+      loop$fun = fun;
+      loop$index = index3 + 1;
+      loop$acc = acc$1;
+    }
+  }
+}
+function index_map(list, fun) {
+  return do_index_map(list, fun, 0, toList([]));
+}
 function drop(loop$list, loop$n) {
   while (true) {
     let list = loop$list;
@@ -1804,6 +1826,13 @@ var Map2 = class extends CustomType {
     this.subtree = subtree;
   }
 };
+var Fragment = class extends CustomType {
+  constructor(elements2, key) {
+    super();
+    this.elements = elements2;
+    this.key = key;
+  }
+};
 var Attribute = class extends CustomType {
   constructor(x0, x1, as_property) {
     super();
@@ -1923,6 +1952,66 @@ function element(tag, attrs, children2) {
   } else {
     return new Element("", "", tag, attrs, children2, false, false);
   }
+}
+function do_keyed(el2, key) {
+  if (el2 instanceof Element) {
+    let namespace = el2.namespace;
+    let tag = el2.tag;
+    let attrs = el2.attrs;
+    let children2 = el2.children;
+    let self_closing = el2.self_closing;
+    let void$ = el2.void;
+    return new Element(
+      key,
+      namespace,
+      tag,
+      attrs,
+      children2,
+      self_closing,
+      void$
+    );
+  } else if (el2 instanceof Map2) {
+    let subtree = el2.subtree;
+    return new Map2(() => {
+      return do_keyed(subtree(), key);
+    });
+  } else if (el2 instanceof Fragment) {
+    let elements2 = el2.elements;
+    let _pipe = elements2;
+    let _pipe$1 = index_map(
+      _pipe,
+      (element2, idx) => {
+        if (element2 instanceof Element) {
+          let el_key = element2.key;
+          let new_key = (() => {
+            if (el_key === "") {
+              return key + "-" + to_string2(idx);
+            } else {
+              return key + "-" + el_key;
+            }
+          })();
+          return do_keyed(element2, new_key);
+        } else {
+          return do_keyed(element2, key);
+        }
+      }
+    );
+    return new Fragment(_pipe$1, key);
+  } else {
+    return el2;
+  }
+}
+function keyed(el2, children2) {
+  return el2(
+    map2(
+      children2,
+      (_use0) => {
+        let key = _use0[0];
+        let child = _use0[1];
+        return do_keyed(child, key);
+      }
+    )
+  );
 }
 function text(content) {
   return new Text(content);
@@ -3231,10 +3320,11 @@ function expect_json(decoder, to_msg) {
 
 // build/dev/javascript/lustre_quickstart/lustre_quickstart.mjs
 var Model2 = class extends CustomType {
-  constructor(count, cats) {
+  constructor(count, cats, next_id) {
     super();
     this.count = count;
     this.cats = cats;
+    this.next_id = next_id;
   }
 };
 var UserIncrementedCount = class extends CustomType {
@@ -3248,7 +3338,7 @@ var ApiReturnedCat = class extends CustomType {
   }
 };
 function init2(_) {
-  return [new Model2(0, toList([])), none()];
+  return [new Model2(0, toList([]), 0), none()];
 }
 function get_cat() {
   let decoder = field("_id", string);
@@ -3265,13 +3355,17 @@ function update(model, msg) {
     return [model.withFields({ count: model.count + 1 }), get_cat()];
   } else if (msg instanceof UserDecrementedCount) {
     return [
-      new Model2(model.count - 1, drop(model.cats, 1)),
+      new Model2(model.count - 1, drop(model.cats, 1), model.next_id),
       none()
     ];
   } else if (msg instanceof ApiReturnedCat && msg[0].isOk()) {
     let cat = msg[0][0];
     return [
-      model.withFields({ cats: prepend(cat, model.cats) }),
+      new Model2(
+        model.count,
+        prepend([model.next_id, cat], model.cats),
+        model.next_id + 1
+      ),
       none()
     ];
   } else {
@@ -3292,14 +3386,21 @@ function view(model) {
         toList([on_click(new UserDecrementedCount())]),
         toList([text("-")])
       ),
-      div(
-        toList([]),
+      keyed(
+        (_capture) => {
+          return div(toList([]), _capture);
+        },
         map2(
           model.cats,
-          (cat) => {
-            return img(
-              toList([src("https://cataas.com/cat/" + cat)])
-            );
+          (item) => {
+            let id = item[0];
+            let cat = item[1];
+            return [
+              to_string2(id),
+              img(
+                toList([src("https://cataas.com/cat/" + cat)])
+              )
+            ];
           }
         )
       )

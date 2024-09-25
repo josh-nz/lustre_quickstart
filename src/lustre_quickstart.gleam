@@ -17,11 +17,11 @@ pub fn main() {
 }
 
 pub type Model {
-  Model(count: Int, cats: List(String))
+  Model(count: Int, cats: List(#(Int, String)), next_id: Int)
 }
 
 fn init(_flags) -> #(Model, effect.Effect(Msg)) {
-  #(Model(0, []), effect.none())
+  #(Model(0, [], 0), effect.none())
 }
 
 pub type Msg {
@@ -34,11 +34,11 @@ pub fn update(model: Model, msg: Msg) -> #(Model, effect.Effect(Msg)) {
   case msg {
     UserIncrementedCount -> #(Model(..model, count: model.count + 1), get_cat())
     UserDecrementedCount -> #(
-      Model(model.count - 1, list.drop(model.cats, 1)),
+      Model(model.count - 1, list.drop(model.cats, 1), model.next_id),
       effect.none(),
     )
     ApiReturnedCat(Ok(cat)) -> #(
-      Model(..model, cats: [cat, ..model.cats]),
+      Model(model.count, [#(model.next_id, cat), ..model.cats], model.next_id + 1),
       effect.none(),
     )
     ApiReturnedCat(Error(_)) -> #(model, effect.none())
@@ -58,10 +58,14 @@ pub fn view(model: Model) -> element.Element(Msg) {
     html.button([event.on_click(UserIncrementedCount)], [element.text("+")]),
     element.text(count),
     html.button([event.on_click(UserDecrementedCount)], [element.text("-")]),
-    html.div(
-      [],
-      list.map(model.cats, fn(cat) {
-        html.img([attribute.src("https://cataas.com/cat/" <> cat)])
+    element.keyed(
+      html.div([], _),
+      list.map(model.cats, fn(item) {
+        let #(id, cat) = item
+        #(
+          int.to_string(id),
+          html.img([attribute.src("https://cataas.com/cat/" <> cat)]),
+        )
       }),
     ),
   ])
